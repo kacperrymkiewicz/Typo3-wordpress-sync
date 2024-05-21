@@ -36,7 +36,7 @@ class SyncCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $io->note('Data synced successfully.');
         //$this->fetchTypo3Data();
-        print_r( $this->addWordpressPost("symfonytest", "publish", "<h2>testsymfony</h2><p>asd</p>"));
+        print_r( $this->addWordpressEntry("symfonytest", "publish", "<h2>testsymfony</h2><p>asd</p>"));
         $io->success('You have a new command! Now make it your own! Pass --help to see your options.');
         return Command::SUCCESS;
 
@@ -64,7 +64,7 @@ class SyncCommand extends Command
 
     }
 
-    private function addWordpressPost($title, $status, $content)
+    private function addWordpressEntry($title, $status, $content)
     {
         $data = [
             'title' => $title,
@@ -73,6 +73,22 @@ class SyncCommand extends Command
         ];
 
         $response = $this->client->request('POST', "http://192.168.0.7/wordpress/wp-json/wp/v2/posts", [
+            'json' => $data,
+            'auth_basic' => [$this->params->get('wordpress.login'), $this->params->get('wordpress.password')]
+        ]);
+
+        return $response->toArray();
+    }
+
+    private function updateWordpressEntry($id, $title, $status, $content)
+    {
+        $data = [
+            'title' => $title,
+            'status' => $status,
+            'content' => $content
+        ];
+
+        $response = $this->client->request('POST', "http://192.168.0.7/wordpress/wp-json/wp/v2/posts/{$id}", [
             'json' => $data,
             'auth_basic' => [$this->params->get('wordpress.login'), $this->params->get('wordpress.password')]
         ]);
