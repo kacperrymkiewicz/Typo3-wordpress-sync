@@ -6,6 +6,9 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -13,10 +16,12 @@ use Doctrine\Persistence\ManagerRegistry;
 #[AsCommand(name: 'sync:typo3')]
 class SyncCommand extends Command
 {
-    public function __construct(ManagerRegistry $doctrine)
+    public function __construct(ManagerRegistry $doctrine, HttpClientInterface $client, ParameterBagInterface $params)
     {
         parent::__construct();
         $this->doctrine = $doctrine;
+        $this->client = $client;
+        $this->params = $params;
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -30,7 +35,8 @@ class SyncCommand extends Command
         // (it's equivalent to returning int(0))
         $io = new SymfonyStyle($input, $output);
         $io->note('Data synced successfully.');
-        $this->fetchTypo3Data();
+        //$this->fetchTypo3Data();
+        print_r( $this->addWordpressPost("symfonytest", "publish", "<h2>testsymfony</h2><p>asd</p>"));
         $io->success('You have a new command! Now make it your own! Pass --help to see your options.');
         return Command::SUCCESS;
 
@@ -56,5 +62,21 @@ class SyncCommand extends Command
             echo $row['bodytext'];
         }
 
+    }
+
+    private function addWordpressPost($title, $status, $content)
+    {
+        $data = [
+            'title' => $title,
+            'status' => $status,
+            'content' => $content
+        ];
+
+        $response = $this->client->request('POST', "http://192.168.0.7/wordpress/wp-json/wp/v2/posts", [
+            'json' => $data,
+            'auth_basic' => [$this->params->get('wordpress.login'), $this->params->get('wordpress.password')]
+        ]);
+
+        return $response->toArray();
     }
 }
