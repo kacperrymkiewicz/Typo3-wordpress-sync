@@ -30,26 +30,11 @@ class SyncCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // ... put here the code to create the user
-
-        // this method must return an integer number with the "exit status code"
-        // of the command. You can also use these constants to make code more readable
-
-        // return this if there was no problem running the command
-        // (it's equivalent to returning int(0))
         $io = new SymfonyStyle($input, $output);
         $io->note('Data sync in progress.');
         $this->syncData($io);
         $io->success('Data synced successfully.');
         return Command::SUCCESS;
-
-        // or return this if some error happened during the execution
-        // (it's equivalent to returning int(1))
-        // return Command::FAILURE;
-
-        // or return this to indicate incorrect command usage; e.g. invalid options
-        // or missing arguments (it's equivalent to returning int(2))
-        // return Command::INVALID
     }
 
     private function fetchTypo3Data()
@@ -67,26 +52,35 @@ class SyncCommand extends Command
 
         //$entries = $entryMapper->findAll();
 
-        while (($row = $typoData->fetchAssociative()) !== false) {
-            $entry = $entryMapper->findOneBy(['typo_id' => $row['uid']]);
+        while (($typoEntry = $typoData->fetchAssociative()) !== false) {
+            $entry = $entryMapper->findOneBy(['typo_id' => $typoEntry['uid']]);
             if($entry) {
-                if($entry->getSyncTime() != $row['tstamp']) {
-                    $this->updateWordpressEntry($entry->getWordpressId(), $row['header'], 'publish', $row['bodytext']);
-                    $entry->setSyncTime($row['tstamp']);
+                if($entry->getSyncTime() != $typoEntry['tstamp']) {
+                    if($typoEntry['deleted'] == 1) {
+                        $this->deleteWordpressEntry($entry->getWordpressId());
+                        $this->entityManager->remove($entry);
+                        $io->text('Usunieto wpis ID: '. strval($entry->getWordpressId()).", ".$typoEntry['tstamp']);
+                        continue;
+                    }
+                    $this->updateWordpressEntry($entry->getWordpressId(), $typoEntry['header'], $typoEntry['hidden'] ? 'private' : 'publish', $typoEntry['bodytext']);
+                    $entry->setSyncTime($typoEntry['tstamp']);
                     $this->entityManager->persist($entry);
-                    $io->text('Synchronizacja zmian we wpisie ID: '. strval($entry->getWordpressId()));
+                    $io->text('Synchronizacja zmian we wpisie ID: '. strval($entry->getWordpressId()).", ".$typoEntry['tstamp']);
                 }
- 
-                return;            
+                continue;
             }
 
-            $wordpressEntry = $this->addWordpressEntry(empty($row['header']) ? "Brak tytułu" : $row['header'], 'publish', $row['bodytext']);
+            if($typoEntry['deleted'] == 1) {
+                continue;
+            }
+
+            $wordpressEntry = $this->addWordpressEntry(empty($typoEntry['header']) ? "Brak tytułu" : $typoEntry['header'], $typoEntry['hidden'] ? 'private' : 'publish', $typoEntry['bodytext']);
             $newEntry = new EntryMapper();
-            $newEntry->setTypoId($row['uid']);
+            $newEntry->setTypoId($typoEntry['uid']);
             $newEntry->setWordpressId($wordpressEntry['id']);
-            $newEntry->setSyncTime($row['tstamp']);
+            $newEntry->setSyncTime($typoEntry['tstamp']);
             $this->entityManager->persist($newEntry);
-            $io->text("Synchronizacja nowego wpisu ID: ". strval($wordpressEntry['id']));
+            $io->text("Synchronizacja nowego wpisu ID: ". strval($wordpressEntry['id']).", ".$typoEntry['tstamp']);
         }
 
         $this->entityManager->flush();
@@ -122,5 +116,13 @@ class SyncCommand extends Command
         ]);
 
         return $response->toArray();
+    }
+
+    
+    private function deleteWordpressEntry($id)
+    {
+        $response = $this->client->request('DELETE', "http://192.168.0.7/wordpress/wp-json/wp/v2/posts/{$id}", [
+            'auth_basic' => [$this->params->get('wordpress.login'), $this->params->get('wordpress.password')]
+        ]);
     }
 }
