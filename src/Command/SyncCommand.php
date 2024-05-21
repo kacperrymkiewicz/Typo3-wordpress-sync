@@ -38,10 +38,9 @@ class SyncCommand extends Command
         // return this if there was no problem running the command
         // (it's equivalent to returning int(0))
         $io = new SymfonyStyle($input, $output);
-        $io->note('Data synced successfully.');
+        $io->note('Data sync in progress.');
         $this->syncData($io);
-        print_r( $this->addWordpressEntry("symfonytest", "publish", "<h2>testsymfony</h2><p>asd</p>"));
-        $io->success('You have a new command! Now make it your own! Pass --help to see your options.');
+        $io->success('Data synced successfully.');
         return Command::SUCCESS;
 
         // or return this if some error happened during the execution
@@ -66,13 +65,16 @@ class SyncCommand extends Command
         $typoData = $this->fetchTypo3Data();
         $entryMapper = $this->entityManager->getRepository(EntryMapper::class);
 
-        $entities = $entryMapper->findAll();
+        //$entries = $entryMapper->findAll();
 
         while (($row = $typoData->fetchAssociative()) !== false) {
             $entry = $entryMapper->findOneBy(['typo_id' => $row['uid']]);
-            if(!empty($entry)) {
-                if($entry->sync_time != $row['tstamp']) {
-                    $this->updateWordpressEntry($entry->wordpress_id, $row['header'], 'publish', $row['bodytext']);
+            if($entry) {
+                if($entry->getSyncTime() != $row['tstamp']) {
+                    $this->updateWordpressEntry($entry->getWordpressId(), $row['header'], 'publish', $row['bodytext']);
+                    $entry->setSyncTime($row['tstamp']);
+                    $this->entityManager->persist($entry);
+                    $io->text('Synchronizacja zmian we wpisie ID: '. strval($entry->getWordpressId()));
                 }
  
                 return;            
@@ -84,7 +86,7 @@ class SyncCommand extends Command
             $newEntry->setWordpressId($wordpressEntry['id']);
             $newEntry->setSyncTime($row['tstamp']);
             $this->entityManager->persist($newEntry);
-            $io->text("Dodawanie nowego posta ID: ". strval($wordpressEntry['id']));
+            $io->text("Synchronizacja nowego wpisu ID: ". strval($wordpressEntry['id']));
         }
 
         $this->entityManager->flush();
