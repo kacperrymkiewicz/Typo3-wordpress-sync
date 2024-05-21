@@ -11,17 +11,21 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
+use App\Entity\EntryMapper;
+use App\Repository\EntryMapperRepository;
+
 
 // the name of the command is what users type after "php bin/console"
 #[AsCommand(name: 'sync:typo3')]
 class SyncCommand extends Command
 {
-    public function __construct(ManagerRegistry $doctrine, HttpClientInterface $client, ParameterBagInterface $params)
+    public function __construct(ManagerRegistry $doctrine, EntityManagerInterface $entityManager, HttpClientInterface $client, ParameterBagInterface $params)
     {
         parent::__construct();
         $this->doctrine = $doctrine;
         $this->client = $client;
         $this->params = $params;
+        $this->entityManager = $entityManager;
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -35,7 +39,7 @@ class SyncCommand extends Command
         // (it's equivalent to returning int(0))
         $io = new SymfonyStyle($input, $output);
         $io->note('Data synced successfully.');
-        //$this->fetchTypo3Data();
+        $this->syncData($io);
         print_r( $this->addWordpressEntry("symfonytest", "publish", "<h2>testsymfony</h2><p>asd</p>"));
         $io->success('You have a new command! Now make it your own! Pass --help to see your options.');
         return Command::SUCCESS;
@@ -54,14 +58,36 @@ class SyncCommand extends Command
         $sql = 'SELECT * FROM tt_content';
         
         $connection = $this->doctrine->getConnection('typo3');
-        $statement = $connection->query($sql);
+        return $connection->query($sql);
+    }
 
+    private function syncData(SymfonyStyle $io)
+    {
+        $typoData = $this->fetchTypo3Data();
+        $entryMapper = $this->entityManager->getRepository(EntryMapper::class);
 
-        // Handle results, for example, display them
-        while (($row = $statement->fetchAssociative()) !== false) {
-            echo $row['bodytext'];
+        $entities = $entryMapper->findAll();
+
+        while (($row = $typoData->fetchAssociative()) !== false) {
+            $entry = $entryMapper->findOneBy(['typo_id' => $row['uid']]);
+            if(!empty($entry)) {
+                if($entry->sync_time != $row['tstamp']) {
+                    $this->updateWordpressEntry($entry->wordpress_id, $row['header'], 'publish', $row['bodytext']);
+                }
+ 
+                return;            
+            }
+
+            $wordpressEntry = $this->addWordpressEntry(empty($row['header']) ? "Brak tytułu" : $row['header'], 'publish', $row['bodytext']);
+            $newEntry = new EntryMapper();
+            $newEntry->setTypoId($row['uid']);
+            $newEntry->setWordpressId($wordpressEntry['id']);
+            $newEntry->setSyncTime($row['tstamp']);
+            $this->entityManager->persist($newEntry);
+            $io->text("Dodawanie nowego posta ID: ". strval($wordpressEntry['id']));
         }
 
+        $this->entityManager->flush();
     }
 
     private function addWordpressEntry($title, $status, $content)
@@ -88,7 +114,7 @@ class SyncCommand extends Command
             'content' => $content
         ];
 
-        $response = $this->client->request('POST', "http://192.168.0.7/wordpress/wp-json/wp/v2/posts/{$id}", [
+        $response = $this->client->request('PATCH', "http://192.168.0.7/wordpress/wp-json/wp/v2/posts/{$id}", [
             'json' => $data,
             'auth_basic' => [$this->params->get('wordpress.login'), $this->params->get('wordpress.password')]
         ]);
