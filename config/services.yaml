@@ -6,6 +6,7 @@
 parameters:
     wordpress.login: '%env(WORDPRESS_LOGIN)%'
     wordpress.password: '%env(WORDPRESS_PASS)%'
+    deepl.authkey: '%env(DEEPL_AUTHKEY)%'
 services:
     # default configuration for services in *this* file
     _defaults:
