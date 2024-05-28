@@ -65,6 +65,7 @@ class SyncCommand extends Command
                     $this->updateWordpressEntry($entry->getWordpressId(), $typoEntry['header'], $typoEntry['hidden'] ? 'private' : 'publish', $typoEntry['bodytext']);
                     $entry->setSyncTime($typoEntry['tstamp']);
                     $this->entityManager->persist($entry);
+                    $this->translateTypo3Entry($typoEntry['uid'], $typoEntry['header'], $typoEntry['bodytext']);
                     $io->text('Synchronizacja zmian we wpisie ID: '. strval($entry->getWordpressId()).", ".$typoEntry['tstamp']);
                 }
                 continue;
@@ -80,6 +81,7 @@ class SyncCommand extends Command
             $newEntry->setWordpressId($wordpressEntry['id']);
             $newEntry->setSyncTime($typoEntry['tstamp']);
             $this->entityManager->persist($newEntry);
+            $this->translateTypo3Entry($typoEntry['uid'], $typoEntry['header'], $typoEntry['bodytext']);
             $io->text("Synchronizacja nowego wpisu ID: ". strval($wordpressEntry['id']).", ".$typoEntry['tstamp']);
         }
 
@@ -91,7 +93,7 @@ class SyncCommand extends Command
         $data = [
             'title' => $this->translateEntry($title, "DE"),
             'status' => $status,
-            'content' => $this->translateEntry($content, "DE");
+            'content' => $this->translateEntry($content, "DE"),
         ];
 
         $response = $this->client->request('POST', "http://192.168.0.7/wordpress/wp-json/wp/v2/posts", [
@@ -146,5 +148,20 @@ class SyncCommand extends Command
         catch (GuzzleException $e) {
             return $content;
         }
+    }
+
+    private function translateTypo3Entry($id, $title, $content) {
+
+        $translatedTitle = $this->translateEntry($title, 'EN');
+        $translatedText = $this->translateEntry($content, 'EN');
+
+        $sql = 'UPDATE tt_content SET bodytext = :bodytext, header = :header WHERE uid = :uid';
+        
+        $connection = $this->doctrine->getConnection('typo3');
+        return $connection->executeQuery($sql, [
+            'uid' => $id,
+            'header' => $translatedTitle,
+            'bodytext' => $translatedText,
+        ]);
     }
 }
