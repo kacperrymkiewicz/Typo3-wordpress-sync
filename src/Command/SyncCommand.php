@@ -89,9 +89,9 @@ class SyncCommand extends Command
     private function addWordpressEntry($title, $status, $content)
     {
         $data = [
-            'title' => $title,
+            'title' => $this->translateEntry($title, "DE"),
             'status' => $status,
-            'content' => $content
+            'content' => $this->translateEntry($content, "DE");
         ];
 
         $response = $this->client->request('POST', "http://192.168.0.7/wordpress/wp-json/wp/v2/posts", [
@@ -105,9 +105,9 @@ class SyncCommand extends Command
     private function updateWordpressEntry($id, $title, $status, $content)
     {
         $data = [
-            'title' => $title,
+            'title' => $this->translateEntry($title, "DE"),
             'status' => $status,
-            'content' => $content
+            'content' => $this->translateEntry($content, "DE"),
         ];
 
         $response = $this->client->request('PATCH', "http://192.168.0.7/wordpress/wp-json/wp/v2/posts/{$id}", [
@@ -124,5 +124,27 @@ class SyncCommand extends Command
         $response = $this->client->request('DELETE', "http://192.168.0.7/wordpress/wp-json/wp/v2/posts/{$id}", [
             'auth_basic' => [$this->params->get('wordpress.login'), $this->params->get('wordpress.password')]
         ]);
+    }
+
+    private function translateEntry($content, $targetLang) {
+        $url = "https://api-free.deepl.com/v2/translate";
+         
+        try {
+            $response = $this->client->request('POST', $url, [
+                'headers' => [
+                    'Authorization' => 'DeepL-Auth-Key ' . $this->params->get('deepl.authkey'),
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => [
+                    'text' => [$content],
+                    'target_lang' => $targetLang,
+                ],
+            ]);
+
+            return $response->toArray()['translations'][0]['text'];
+        }
+        catch (GuzzleException $e) {
+            return $content;
+        }
     }
 }
